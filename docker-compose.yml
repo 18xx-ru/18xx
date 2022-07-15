@@ -5,7 +5,6 @@ services:
     build:
       context: .
     depends_on:
-      - db
       - redis
     logging:
       options:
@@ -26,17 +25,6 @@ services:
       context: ./redis/
     ports:
       - 127.0.0.1:6380:6379
-    logging:
-      options:
-        max-size: "10m"
-
-  db:
-    build:
-      context: ./db/
-    volumes:
-      - ./db/data:/var/lib/postgresql/data:Z
-    ports:
-      - 127.0.0.1:5433:5432
     logging:
       options:
         max-size: "10m"

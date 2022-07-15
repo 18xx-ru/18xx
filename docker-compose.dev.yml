@@ -12,6 +12,9 @@ x-rack: &rack
   volumes:
     - .:/18xx:z
     - /18xx/vendor
+  depends:
+    - db
+    - redis
 
 services:
   rack:
@@ -24,6 +27,15 @@ services:
     command: bundle exec ruby queue.rb # bundle exec rerun --background -i 'build/*' -i 'public/*' 'ruby queue.rb'
 
   db:
+    build:
+      context: ./db/
+    volumes:
+      - ./db/data:/var/lib/postgresql/data:Z
+    ports:
+      - 127.0.0.1:5433:5432
+    logging:
+      options:
+        max-size: "10m"
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: password
