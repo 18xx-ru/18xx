@@ -10,18 +10,6 @@ if [ -z "${ELASTIC_KEY}" ]; then
     bad_vars_msg="${bad_vars_msg}\n- ELASTIC_KEY"
 fi
 
-if [ -z "${POSTGRES_USER}" ]; then
-    bad_vars_msg="${bad_vars_msg}\n- POSTGRES_USER"
-fi
-
-if [ -z "${POSTGRES_PASSWORD}" ]; then
-    bad_vars_msg="${bad_vars_msg}\n- POSTGRES_PASSWORD"
-fi
-
-if [ -z "${POSTGRES_DB}" ]; then
-    bad_vars_msg="${bad_vars_msg}\n- POSTGRES_DB"
-fi
-
 if [ -z "${NEW_RELIC_LICENSE_KEY}" ]; then
     bad_vars_msg="${bad_vars_msg}\n- NEW_RELIC_LICENSE_KEY"
 fi
