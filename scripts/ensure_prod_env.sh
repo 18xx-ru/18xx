@@ -6,8 +6,8 @@ if [ -z "${DATABASE_URL}" ]; then
     bad_vars_msg="${bad_vars_msg}\n- DATABASE_URL"
 fi
 
-if [ -z "${ELASTIC_KEY}" ]; then
-    bad_vars_msg="${bad_vars_msg}\n- ELASTIC_KEY"
+if [ -z "${MAILGUN_KEY}" ]; then
+    bad_vars_msg="${bad_vars_msg}\n- MAILGUN_KEY"
 fi
 
 if [ -z "${NEW_RELIC_LICENSE_KEY}" ]; then

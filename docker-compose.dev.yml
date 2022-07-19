@@ -12,9 +12,6 @@ x-rack: &rack
   volumes:
     - .:/18xx:z
     - /18xx/vendor
-  depends:
-    - db
-    - redis
 
 services:
   rack:
