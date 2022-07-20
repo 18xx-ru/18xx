@@ -273,11 +273,11 @@ module Engine
 
         def sell_shares_and_change_price(bundle, allow_president_change: true, swap: nil)
           corporation = bundle.corporation
-          price = corporation.share_price.price
+          old_price = corporation.share_price
 
           @share_pool.sell_shares(bundle, allow_president_change: allow_president_change, swap: swap)
           (bundle.num_shares + 1).div(2).times { @stock_market.move_left(corporation) } unless @sl
-          log_share_price(corporation, price)
+          log_share_price(corporation, old_price)
         end
 
         def operating_round(round_num)
@@ -427,7 +427,10 @@ module Engine
           end
 
           other.spend(other.cash, corp) if other.cash.positive?
-          other.trains.each { |train| train.owner = corp }
+          other.trains.each do |train|
+            train.owner = corp
+            train.operated = false
+          end
           corp.trains.concat(other.trains)
           @log << "Transferred trains and treasury from #{other.name} to #{corp.name}"
 

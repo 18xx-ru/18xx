@@ -45,7 +45,7 @@ module Engine
         CURRENCY_FORMAT_STR = '$%d'
 
         MARKET = [
-          %w[5y 10y 15y 20y 25y 30y 35y 40y 45y 50p 60px 70px 80px 90px 100px 110 120 135 150 165 180 200 220 245 270 300 330
+          %w[5y 10y 15y 20y 25y 30y 35y 40y 45y 50p 60xp 70xp 80xp 90xp 100xp 110 120 135 150 165 180 200 220 245 270 300 330
              360 400 450 500 550 600e],
         ].freeze
 
@@ -682,9 +682,9 @@ module Engine
         def close_p16
           company = company_by_id('P16')
           @log << "#{company.name} closes"
-          from = company.owner.share_price.price
+          old_price = company.owner.share_price
           stock_market.move_left(company.owner)
-          log_share_price(company.owner, from)
+          log_share_price(company.owner, old_price)
           company.close!
         end
 
@@ -766,6 +766,20 @@ module Engine
         def reduced_bundle_price_for_market_drop(bundle)
           bundle.share_price = @stock_market.find_share_price(bundle.corporation, [:left] * bundle.num_shares).price
           bundle
+        end
+
+        def price_movement_chart
+          [
+            ['Action', 'Share Price Change'],
+            ['Dividend 0 or withheld', '1 ←'],
+            ['Dividend < share price', 'none'],
+            ['Dividend ≥ share price, < 2x share price ', '1 →'],
+            ['Dividend ≥ 2x share price', '2 →'],
+            ['Minor company dividend > 0', '1 →'],
+            ['Each share sold (if sold by director)', '1 ←'],
+            ['One or more shares sold (if sold by non-director)', '1 ←'],
+            ['Corporation (except NdeM) sold out at end of SR', '1 →'],
+          ]
         end
       end
     end
