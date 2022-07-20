@@ -16,11 +16,17 @@ x-rack: &rack
 services:
   rack:
     <<: *rack
+    depends_on:
+      - db
+      - redis
     ports:
       - 9292:9292
 
   queue:
     <<: *rack
+    depends_on:
+      - db
+      - redis
     command: bundle exec ruby queue.rb # bundle exec rerun --background -i 'build/*' -i 'public/*' 'ruby queue.rb'
 
   db:
