@@ -77,12 +77,13 @@ module Engine
     class Base
       include Game::Meta
 
-      attr_reader :raw_actions, :actions, :bank, :cert_limit, :cities, :companies, :corporations,
+      attr_reader :raw_actions, :actions, :bank, :cities, :companies, :corporations,
                   :depot, :finished, :graph, :hexes, :id, :loading, :loans, :log, :minors,
                   :phase, :players, :operating_rounds, :round, :share_pool, :stock_market, :tile_groups,
                   :tiles, :turn, :total_loans, :undo_possible, :redo_possible, :round_history, :all_tiles,
                   :optional_rules, :exception, :last_processed_action, :broken_action,
-                  :turn_start_action_id, :last_turn_start_action_id, :programmed_actions, :round_counter
+                  :turn_start_action_id, :last_turn_start_action_id, :programmed_actions, :round_counter,
+                  :manually_ended
 
       # Game end check is described as a dictionary
       # with reason => after
@@ -220,6 +221,9 @@ module Engine
 
       # if sold more than needed then cannot then buy a cheaper train in the depot.
       EBUY_SELL_MORE_THAN_NEEDED_LIMITS_DEPOT_TRAIN = false
+
+      # loans taken during ebuy can lead to receviership
+      EBUY_CORP_LOANS_RECEIVERSHIP = false
 
       # when is the home token placed? on...
       # par
@@ -570,7 +574,7 @@ module Engine
 
       def result
         result_players
-          .map { |p| [p.name, player_value(p)] }
+          .map { |p| [p.id, player_value(p)] }
           .sort_by { |_, v| v }
           .reverse
           .to_h
@@ -634,7 +638,11 @@ module Engine
         actions.each.with_index do |action, index|
           case action['type']
           when 'undo'
-            undo_to = action['action_id'] || filtered_actions.rindex { |a| a && a['type'] != 'message' } || 0
+            undo_to = if (id = action['action_id'])
+                        id.zero? ? 0 : actions.index { |a| a['id'] == action['action_id'] } + 1
+                      else
+                        filtered_actions.rindex { |a| a && a['type'] != 'message' } || 0
+                      end
             active_undos << filtered_actions[undo_to...index].map.with_index do |a, i|
               next if !a || a['type'] == 'message'
 
@@ -658,27 +666,13 @@ module Engine
       # Initialize actions respecting the undo state
       def initialize_actions(actions, at_action: nil)
         @loading = true unless @strict
-        filtered_actions, active_undos = self.class.filtered_actions(actions)
+        @filtered_actions, active_undos = self.class.filtered_actions(actions)
 
         # Store all actions for history navigation
         @raw_all_actions = actions
-        filtered_actions.each.with_index { |action, index| @raw_all_actions[index]['skip'] = true unless action }
 
         @undo_possible = false
-        # replay all actions with a copy
-        filtered_actions.each.with_index do |action, index|
-          next if @exception
-          break if at_action && action && action['id'] > at_action
-
-          if action
-            action = action.copy(self) if action.is_a?(Action::Base)
-
-            process_action(action)
-          else
-            # Restore the original action to the list to ensure action ids remain consistent but don't apply them
-            @raw_actions << actions[index]
-          end
-        end
+        process_to_action(at_action || actions.last['id']) unless actions.empty?
         @redo_possible = active_undos.any?
         @loading = false
       end
@@ -730,7 +724,7 @@ module Engine
       end
 
       def process_single_action(action)
-        if action.user && action.user != acting_for_player(action.entity&.player)&.id
+        if action.user && action.user != acting_for_player(action.entity&.player)&.id && action.type != 'message'
           @log << "• Action(#{action.type}) via Master Mode by: #{player_by_id(action.user)&.name || 'Owner'}"
         end
 
@@ -824,23 +818,28 @@ module Engine
 
       def previous_action_id_from(action_id)
         # Skips messages and undone actions
-        @raw_all_actions.reverse.find { |a| a['id'] < action_id && !a['skip'] && a['type'] != 'message' }&.fetch('id') || 0
+        @filtered_actions.reverse.find { |a| a && a['id'] < action_id && a['type'] != 'message' }&.fetch('id') || 0
       end
 
       def next_action_id_from(action_id)
         # Skips messages and undone actions
-        @raw_all_actions.find { |a| a['id'] > action_id && !a['skip'] && a['type'] != 'message' }&.fetch('id')
+        @filtered_actions.find { |a| a && a['id'] > action_id && a['type'] != 'message' }&.fetch('id')
       end
 
       def process_to_action(id)
+        last_processed_action_id = @raw_actions.last&.fetch('id') || 0
         @raw_all_actions.each.with_index do |action, index|
-          next if index < (@last_processed_action || 0)
-          break if index >= id
+          next if @exception
+          next if action['id'] <= last_processed_action_id
+          break if action['id'] > id
 
-          if action['skip']
-            @raw_actions << action
-          else
+          if @filtered_actions[index]
             process_action(action)
+            # maintain original action ids
+            @raw_actions.last['id'] = action['id']
+            @last_processed_action = action['id']
+          else
+            @raw_actions << action
           end
         end
       end
@@ -880,6 +879,11 @@ module Engine
       def rust?(train, purchased_train)
         train.rusts_on == purchased_train.sym ||
           (train.obsolete_on == purchased_train.sym && @depot.discarded.include?(train))
+      end
+
+      # Before obsoleting, check if this specific train should obsolete.
+      def obsolete?(train, purchased_train)
+        train.obsolete_on == purchased_train.sym
       end
 
       def shares
@@ -1179,13 +1183,14 @@ module Engine
         (price * (100.0 - self.class::DISCARDED_TRAIN_DISCOUNT.to_f) / 100.0).ceil.to_i
       end
 
-      def end_game!
+      def end_game!(player_initiated: false)
         return if @finished
 
         @finished = true
+        @manually_ended = player_initiated
         store_player_info
         @round_counter += 1
-        scores = result.map { |name, value| "#{name} (#{format_currency(value)})" }
+        scores = result.map { |id, value| "#{@players.find { |p| p.id == id.to_i }&.name} (#{format_currency(value)})" }
         @log << "-- Game over: #{scores.join(', ')} --"
       end
 
@@ -1359,6 +1364,10 @@ module Engine
         []
       end
 
+      def visited_stops(route)
+        route.connection_data.flat_map { |c| [c[:left], c[:right]] }.uniq.compact
+      end
+
       def get(type, id)
         return nil unless type && id
 
@@ -1404,6 +1413,10 @@ module Engine
         raise NotImplementedError
       end
 
+      def home_token_can_be_cheater
+        false
+      end
+
       def place_home_token(corporation)
         return unless corporation.next_token # 1882
         # If a corp has laid it's first token assume it's their home token
@@ -1445,10 +1458,14 @@ module Engine
         cities = tile.cities
         city = cities.find { |c| c.reserved_by?(corporation) } || cities.first
         token = corporation.find_token_by_type
-        return unless city.tokenable?(corporation, tokens: token)
 
-        @log << "#{corporation.name} places a token on #{hex.name}"
-        city.place_token(corporation, token)
+        if city.tokenable?(corporation, tokens: token)
+          @log << "#{corporation.name} places a token on #{hex.name}"
+          city.place_token(corporation, token)
+        elsif home_token_can_be_cheater
+          @log << "#{corporation.name} places a token on #{hex.name}"
+          city.place_token(corporation, token, cheater: true)
+        end
       end
 
       def graph_for_entity(_entity)
@@ -1540,7 +1557,7 @@ module Engine
         #   fine (e.g., 18Chesapeake's OO cities merge to one city in brown)
         # - TODO: account for games that allow double dits to upgrade to one town
         return false if from.towns.size != to.towns.size
-        return false if !from.label && from.cities.size != to.cities.size
+        return false if !from.label && from.cities.size != to.cities.size && !upgrade_ignore_num_cities(from)
 
         # but don't permit a labelled city to be downgraded to 0 cities.
         return false if from.label && !from.cities.empty? && to.cities.empty?
@@ -1549,6 +1566,10 @@ module Engine
         return false if (from.color == :white) && from.label.to_s == 'OO' && from.cities.size != to.cities.size
 
         true
+      end
+
+      def upgrade_ignore_num_cities(_from)
+        false
       end
 
       def upgrades_to_correct_color?(from, to, selected_company: nil)
@@ -1836,22 +1857,21 @@ module Engine
       end
 
       def discountable_trains_for(corporation)
-        discountable_trains = @depot.depot_trains.select(&:discount)
+        discountable_trains = @depot.depot_trains.select { |train| train.discount || train.variants.any? { |_, v| v[:discount] } }
 
         corporation.trains.flat_map do |train|
           discountable_trains.flat_map do |discount_train|
+            discount_info = []
             discounted_price = discount_train.price(train)
-            next if discount_train.price == discounted_price
-
             name = discount_train.name
-            discount_info = [[train, discount_train, name, discounted_price]]
+            discount_info = [[train, discount_train, name, discounted_price]] if discount_train.price > discounted_price
 
             # Add variants if any - they have same discount as base version
             discount_train.variants.each do |_, v|
               next if v[:name] == name
 
-              price = v[:price] - (discount_train.price - discounted_price)
-              discount_info << [train, discount_train, v[:name], price]
+              discounted_price = discount_train.price(train, variant: v)
+              discount_info << [train, discount_train, v[:name], discounted_price] if v[:price] > discounted_price
             end
 
             discount_info
@@ -1945,7 +1965,7 @@ module Engine
         owners = Hash.new(0)
 
         trains.each do |t|
-          next if t.obsolete || t.obsolete_on != train.sym
+          next if t.obsolete || !obsolete?(t, train)
 
           obsolete_trains << t.name
           t.obsolete = true
@@ -1976,7 +1996,13 @@ module Engine
 
       def progress_information; end
 
-      def assignment_tokens(assignment)
+      def assignment_tokens(assignment, simple_logos = false)
+        if assignment.is_a?(Engine::Corporation)
+          return assignment.simple_logo if simple_logos && assignment.simple_logo
+
+          return assignment.logo
+        end
+
         self.class::ASSIGNMENT_TOKENS[assignment]
       end
 
@@ -2016,6 +2042,14 @@ module Engine
 
       def market_share_limit(_corporation = nil)
         self.class::MARKET_SHARE_LIMIT
+      end
+
+      def cert_limit(_player = nil)
+        @cert_limit
+      end
+
+      def corporation_show_interest?
+        true
       end
 
       private
@@ -2698,7 +2732,7 @@ module Engine
       end
 
       def player_sort(entities)
-        entities.sort_by(&:name).group_by(&:owner)
+        entities.sort_by { |entity| [operating_order.index(entity) || Float::INFINITY, entity.name] }.group_by(&:owner)
       end
 
       def bank_sort(corporations)
@@ -2929,6 +2963,8 @@ module Engine
       def force_unconditional_stock_pass?
         false
       end
+
+      def second_icon(corporation); end
     end
   end
 end

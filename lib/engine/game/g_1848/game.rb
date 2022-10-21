@@ -4,15 +4,18 @@ require_relative 'meta'
 require_relative 'map'
 require_relative '../base'
 require_relative '../../loan'
+require_relative '../cities_plus_towns_route_distance_str'
 
 module Engine
   module Game
     module G1848
       class Game < Game::Base
-        attr_reader :sydney_adelaide_connected, :boe
+        attr_reader :sydney_adelaide_connected, :boe, :private_closed_triggered, :take_out_loan_triggered,
+                    :can_buy_trains, :com_can_operate
 
         include_meta(G1848::Meta)
         include Map
+        include CitiesPlusTownsRouteDistanceStr
 
         CURRENCY_FORMAT_STR = '£%d'
 
@@ -20,17 +23,42 @@ module Engine
 
         CERT_LIMIT = { 3 => 20, 4 => 17, 5 => 14, 6 => 12 }.freeze
 
+        CERT_LIMIT_RECEIVERSHIP = {
+          3 => { 1 => 18, 2 => 16, 3 => 14, 4 => 12, 5 => 10 },
+          4 => { 1 => 15, 2 => 13, 3 => 11, 4 => 10, 5 => 9 },
+          5 => { 1 => 13, 2 => 12, 3 => 10, 4 => 9, 5 => 8 },
+          6 => { 1 => 11, 2 => 10, 3 => 9, 4 => 8, 5 => 7 },
+        }.freeze
+
+        CERT_LIMIT_RECEIVERSHIP_REDUCTION = { 3 => 2, 4 => 2, 5 => 1, 6 => 1 }.freeze
+
         STARTING_CASH = { 3 => 840, 4 => 630, 5 => 510, 6 => 430 }.freeze
+
+        K_BONUS = { 0 => 0, 1 => 0, 2 => 50, 3 => 100, 4 => 150, 5 => 200 }.freeze
 
         BOE_STARTING_CASH = 2000
 
-        BOE_STARTING_PRICE = 80
+        BOE_STARTING_PRICE = 70
 
         BOE_ROW = 6
 
         CAPITALIZATION = :full
 
         MUST_SELL_IN_BLOCKS = false
+
+        EBUY_PRES_SWAP = false
+
+        EBUY_CAN_SELL_SHARES = false
+
+        CERT_LIMIT_INCLUDES_PRIVATES = false
+
+        EBUY_DEPOT_TRAIN_MUST_BE_CHEAPEST = false
+
+        EBUY_CORP_LOANS_RECEIVERSHIP = true
+
+        DISCARDED_TRAINS = :remove
+
+        TRACK_RESTRICTION = :permissive
 
         MARKET = [
           %w[0c
@@ -84,7 +112,8 @@ module Engine
           %w[0c 40 50 60 70 80p 90 110 130 160 190],
           %w[0c 30 40 50 60 70p 80 100 120],
           %w[0c 20 30 40 50 60 70],
-          %w[80r
+          %w[70r
+             80r
              90r
              100r
              110r
@@ -119,6 +148,19 @@ module Engine
           custom: 'Fifth corporation is in receivership',
         }.freeze
 
+        def price_movement_chart
+          [
+            ['Action', 'Share Price Change'],
+            ['Dividend 0 or withheld', '1 ←'],
+            ['Dividend paid', '1 →'],
+            ['Loan taken - Corporation', '2 ←'],
+            ['Additional loans taken during forced train buy', '3 ←'],
+            ['Loan granted - BOE', '1 →'],
+            ['One or more shares sold (Except BOE)', '1 ↓'],
+            ['Corporation sold out at end of SR', '1 ↑'],
+          ]
+        end
+
         GAME_END_CHECK = { bank: :full_or, stock_market: :full_or, custom: :full_or }.freeze
 
         PHASES = [{ name: '2', train_limit: 4, tiles: [:yellow], operating_rounds: 1 },
@@ -128,7 +170,7 @@ module Engine
                     train_limit: 4,
                     tiles: %i[yellow green],
                     operating_rounds: 2,
-                    status: ['can_buy_companies'],
+                    status: %w[can_buy_companies],
                   },
                   {
                     name: '4',
@@ -136,7 +178,7 @@ module Engine
                     train_limit: 3,
                     tiles: %i[yellow green],
                     operating_rounds: 2,
-                    status: ['can_buy_companies'],
+                    status: %w[can_buy_companies],
                   },
                   {
                     name: '5',
@@ -169,7 +211,12 @@ module Engine
             rusts_on: '4',
             num: 6,
             variants: [
-              { name: '2+', price: 120 },
+              {
+                name: '2+',
+                distance: [{ 'nodes' => %w[city offboard], 'pay' => 2, 'visit' => 2 },
+                           { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                price: 120,
+              },
             ],
           },
           {
@@ -180,10 +227,17 @@ module Engine
             rusts_on: '6',
             num: 5,
             variants: [
-              { name: '3+', distance: 3, price: 230 },
+              {
+                name: '3+',
+                distance:
+                [{ 'nodes' => %w[city offboard], 'pay' => 3, 'visit' => 3 },
+                 { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                price: 230,
+              },
             ],
             events: [{ 'type' => 'take_out_loans' },
-                     { 'type' => 'lay_second_tile' }],
+                     { 'type' => 'lay_second_tile' },
+                     { 'type' => 'can_buy_trains' }],
           },
           {
             name: '4',
@@ -193,7 +247,12 @@ module Engine
             rusts_on: '8',
             num: 4,
             variants: [
-              { name: '4+', distance: 4, price: 340 },
+              {
+                name: '4+',
+                distance: [{ 'nodes' => %w[city offboard], 'pay' => 4, 'visit' => 4 },
+                           { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                price: 340,
+              },
             ],
           },
           {
@@ -203,8 +262,14 @@ module Engine
             price: 500,
             num: 3,
             variants: [
-              { name: '5+', distance: 5, price: 550 },
-],
+              {
+                name: '5+',
+                distance:
+                [{ 'nodes' => %w[city offboard], 'pay' => 5, 'visit' => 5 },
+                 { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                price: 550,
+              },
+            ],
             events: [{ 'type' => 'close_companies' }],
           },
           {
@@ -214,30 +279,38 @@ module Engine
             price: 600,
             num: 2,
             variants: [
-              { name: '6+', distance: 6, price: 660 },
+              {
+                name: '6+',
+                distance: [{ 'nodes' => %w[city offboard], 'pay' => 6, 'visit' => 6 },
+                           { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                price: 660,
+              },
             ],
             events: [{ 'type' => 'com_operates' }],
           },
-          {
-            name: 'D',
-            distance: 999,
-            price: 1100,
-            num: 6,
-            discount: { '4' => 300, '5' => 300, '6' => 300 },
-          },
+
           {
             name: '8',
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 8, 'visit' => 8 },
                        { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
             price: 800,
-            num: 6,
+            num: 20,
+            variants: [
+              {
+                name: 'D',
+                distance: 999,
+                price: 1100,
+                num: 20,
+                discount: { '4' => 300, '4+' => 300, '5' => 300, '5+' => 300, '6+' => 300, '6' => 300 },
+              },
+            ],
           },
           {
             name: '2E',
             distance: [{ 'nodes' => %w[city offboard], 'pay' => 2, 'visit' => 99 },
-                       { 'nodes' => ['town'], 'pay' => 99, 'visit' => 99 }],
+                       { 'nodes' => ['town'], 'pay' => 0, 'visit' => 99 }],
             price: 200,
-            num: 6,
+            num: 10,
             available_on: '5',
           },
         ].freeze
@@ -247,34 +320,33 @@ module Engine
                   'lay_second_tile' => ['Corporations can lay a second tile'],
                   'com_operates' =>
                   ['COM operates without Sydney-Adelaide connection'],
+                  'can_buy_trains' => ['Corporations can buy trains from other corporations']
                 ).freeze
 
         COMPANIES = [
           {
             sym: 'P1',
             name: "Melbourne & Hobson's Bay Railway Company",
-            value: 40,
-            discount: 10,
+            value: 30,
             min_price: 1,
             max_price: 40,
             revenue: 5,
-            desc: 'No special abilities.',
+            desc: 'No special abilities. Can be bought for £1-£40',
           },
           {
             sym: 'P2',
-            name: 'Sydney Railway Company',
-            value: 80,
+            name: 'Oodnadatta Railway',
+            value: 70,
             min_price: 1,
             max_price: 80,
-            discount: 10,
             revenue: 10,
             desc: 'Owning Public Company or its Director may build one (1) free tile on a desert hex (marked by'\
-                  ' a cactus icon). This power does not go away after a 5/5+ train is purchased.',
+                  ' a cactus icon). This power does not go away after a 5/5+ train is purchased. Can be bought for £1-£80 ',
             abilities: [
                     {
                       type: 'tile_lay',
                       discount: 40,
-                      hexes: %w[B7 B9 C2 C4 C8 E6 E8],
+                      hexes: %w[B3 B7 B9 C2 C4 C8 E6 E8],
                       tiles: %w[7 8 9],
                       count: 1,
                       reachable: true,
@@ -285,7 +357,7 @@ module Engine
                     {
                       type: 'tile_lay',
                       discount: 40,
-                      hexes: %w[B7 B9 C2 C4 C8 E6 E8],
+                      hexes: %w[B3 B7 B9 C2 C4 C8 E6 E8],
                       tiles: %w[7 8 9],
                       count: 1,
                       reachable: true,
@@ -298,13 +370,12 @@ module Engine
           {
             sym: 'P3',
             name: 'Tasmanian Railways',
-            value: 140,
-            discount: 30,
+            value: 110,
             min_price: 1,
             max_price: 140,
             revenue: 15,
-            desc: 'The Tasmania tile can be placed by a Public Company on one of the dark blue hexes. This is in'\
-                  " addition to the company's normal build that turn.",
+            desc: 'The Tasmania tile can be placed by a Public Company on one of the two blue hexes (I8, I10). This is in'\
+                  " addition to the company's normal build that turn. Can be bought for £1-£140",
             abilities: [
                     {
                       type: 'tile_lay',
@@ -322,13 +393,13 @@ module Engine
           {
             sym: 'P4',
             name: 'The Ghan',
-            value: 220,
-            discount: 50,
+            value: 170,
+            discount: 0,
             min_price: 1,
             max_price: 220,
             revenue: 20,
             desc: 'Owning Public Company or its Director may receive a one-time discount of £100 on the purchase'\
-                  ' of a 2E (Ghan) train. This power does not go away after a 5/5+ train is purchased.',
+                  ' of a 2E (Ghan) train. This power does not go away after a 5/5+ train is purchased. Can be bought for £1-£220',
             abilities: [
                     {
                       type: 'train_discount',
@@ -344,7 +415,7 @@ module Engine
                       trains: ['2E'],
                       count: 1,
                       owner_type: 'player',
-                      when: 'owning_player_or_turn',
+                      when: 'buying_train',
                     },
                   ],
 
@@ -352,8 +423,7 @@ module Engine
           {
             sym: 'P5',
             name: 'Trans-Australian Railway',
-            value: 0,
-            discount: -170,
+            value: 170,
             revenue: 25,
             desc: 'The owner receives a 10% share in the QR. Cannot be bought by a corporation',
             abilities: [{ type: 'shares', shares: 'QR_1' },
@@ -362,13 +432,13 @@ module Engine
           {
             sym: 'P6',
             name: 'North Australian Railway',
-            value: 0,
-            discount: -230,
+            value: 230,
             revenue: 30,
             desc: "The owner receives a Director's Share share in the CAR, which must start at a par value of £100."\
-                  ' Cannot be bought by a corporation',
+                  ' Cannot be bought by a corporation. Closes when CAR purchases its first train.',
             abilities: [{ type: 'shares', shares: 'CAR_0' },
-                        { type: 'no_buy' }],
+                        { type: 'no_buy' },
+                        { type: 'close', when: 'bought_train', corporation: 'CAR' }],
           },
         ].freeze
 
@@ -391,7 +461,7 @@ module Engine
             simple_logo: '1848/CAR.alt',
             tokens: [0, 40, 100],
             coordinates: 'E4',
-            color: '#232b2b',
+            color: 'black',
           },
           {
             sym: 'VR',
@@ -401,7 +471,7 @@ module Engine
             tokens: [0, 40, 100],
             coordinates: 'H11',
             text_color: 'black',
-            color: 'gold',
+            color: '#ffe600',
           },
           {
             sym: 'NSW',
@@ -411,7 +481,7 @@ module Engine
             tokens: [0, 40, 100, 100],
             coordinates: 'F17',
             text_color: 'black',
-            color: 'orange',
+            color: '#ff9027',
           },
           {
             sym: 'SAR',
@@ -420,7 +490,7 @@ module Engine
             simple_logo: '1848/SAR.alt',
             tokens: [0, 40, 100, 100],
             coordinates: 'G6',
-            color: 'darkMagenta',
+            color: '#9e2a97',
           },
           {
             sym: 'COM',
@@ -428,7 +498,8 @@ module Engine
             logo: '1848/COM',
             simple_logo: '1848/COM.alt',
             tokens: [0, 0, 100, 100, 100],
-            color: 'dimGray',
+            text_color: 'black',
+            color: '#cfc5a2',
           },
           {
             sym: 'FT',
@@ -437,7 +508,8 @@ module Engine
             simple_logo: '1848/FT.alt',
             tokens: [0, 40, 100, 100],
             coordinates: 'G14',
-            color: 'mediumBlue',
+            text_color: 'black',
+            color: '#55c3ec',
           },
           {
             sym: 'WA',
@@ -446,7 +518,7 @@ module Engine
             simple_logo: '1848/WA.alt',
             tokens: [0, 40, 100, 100, 100],
             coordinates: 'D1',
-            color: 'maroon',
+            color: '#ee332a',
           },
           {
             sym: 'QR',
@@ -455,12 +527,12 @@ module Engine
             simple_logo: '1848/QR.alt',
             tokens: [0, 40, 100, 100, 100],
             coordinates: 'B19',
-            color: 'darkGreen',
+            color: '#399c42',
           },
         ].freeze
 
         TILE_LAYS = [{ lay: true, upgrade: true }].freeze
-        EXTRA_TILE_LAYS = [{ lay: true, upgrade: true }, { lay: true, upgrade: :not_if_upgraded }].freeze
+        EXTRA_TILE_LAYS = [{ lay: true, upgrade: true }, { lay: :not_if_upgraded, upgrade: false }].freeze
 
         def tile_lays(_entity)
           @extra_tile_lay ? EXTRA_TILE_LAYS : TILE_LAYS
@@ -473,6 +545,35 @@ module Engine
 
         def event_take_out_loans!
           @log << 'Corporations can now take out loans'
+          @take_out_loan_triggered = true
+        end
+
+        def event_com_operates!
+          @log << 'COM operates even without Sydney-Adelaide connection'
+          @com_can_operate = true
+        end
+
+        def event_can_buy_trains!
+          @log << 'Corporations can buy trains from other corporations'
+          @can_buy_trains = true
+        end
+
+        def event_close_companies!
+          @log << '-- Event: Private companies close --'
+          @private_closed_triggered = true
+          @companies.each do |company|
+            unused_ability = company.all_abilities.any? { |ability| ability.type != :no_buy && !ability.used? }
+            if unused_ability
+              # reduce revenue to 0, keep company around, can't be bought if owned by player
+              company.revenue = 0
+              no_buy = Engine::Ability::NoBuy.new(type: 'no_buy')
+              company.add_ability(no_buy)
+            else
+              # close company
+              @log << "#{company.name} closes"
+              company.close!
+            end
+          end
         end
 
         SELL_BUY_ORDER = :sell_buy
@@ -495,6 +596,8 @@ module Engine
           @boe.cash = BOE_STARTING_CASH
           @stock_market.set_par(@boe, lookup_boe_price(BOE_STARTING_PRICE))
           @extra_tile_lay = false
+          @close_corp_count = 0
+          @player_corp_close_count = Hash.new { |h, k| h[k] = 0 }
         end
 
         def new_auction_round
@@ -513,18 +616,23 @@ module Engine
         end
 
         def operating_round(round_num)
-          Round::Operating.new(self, [
+          G1848::Round::Operating.new(self, [
+            G1848::Step::CheckCOMFormation,
+            G1848::Step::TakeLoanBuyCompany,
+            G1848::Step::CashCrisis,
+            G1848::Step::TasmaniaTile,
             Engine::Step::Bankrupt,
             Engine::Step::Exchange,
-            Engine::Step::SpecialTrack,
-            Engine::Step::BuyCompany,
+            G1848::Step::SpecialTrack,
             G1848::Step::Track,
             Engine::Step::Token,
             Engine::Step::Route,
+            G1848::Step::BlockingLoan,
             G1848::Step::Dividend,
-            Engine::Step::SpecialBuyTrain,
+            Engine::Step::DiscardTrain,
+            G1848::Step::SpecialBuyTrain,
             G1848::Step::BuyTrain,
-            [Engine::Step::BuyCompany, { blocks: true }],
+            [G1848::Step::TakeLoanBuyCompany, { blocks: true }],
           ], round_num: round_num)
         end
 
@@ -538,7 +646,6 @@ module Engine
         end
 
         def upgrades_to?(from, to, _special = false, selected_company: nil)
-          return %w[5 6 57].include?(to.name) if (from.hex.tile.label.to_s == 'K') && (from.hex.tile.color == 'white')
           return ['241'].include?(to.name) if selected_company&.sym == 'P3'
 
           super
@@ -551,9 +658,17 @@ module Engine
           super
         end
 
-        def sar
-          # SAR is used for graph to find adelaide (to connect to sydney for starting COM)
-          @sar ||= @corporations.find { |corporation| corporation.name == 'SAR' }
+        def dummy_corp
+          # dummy corp is used for graph to find adelaide (to connect to sydney for starting COM)
+          @dummy_corp ||= Engine::Corporation.new(name: 'Dummy Corp', sym: 'Dummy Corp', tokens: [], coordinates: 'G6')
+        end
+
+        def tasmania
+          @tasmania ||= company_by_id('P3')
+        end
+
+        def ghan
+          @ghan ||= company_by_id('P4')
         end
 
         def sydney
@@ -564,18 +679,19 @@ module Engine
           @adelaide ||= hex_by_id('G6')
         end
 
-        def check_sydney_adelaide_connected
-          return @sydney_adelaide_connected if @sydney_adelaide_connected
-
+        def check_for_sydney_adelaide_connection
           graph = Graph.new(self, home_as_token: true, no_blocking: true)
-          graph.compute(sar)
-          @sydney_adelaide_connected = graph.reachable_hexes(sar).include?(sydney)
-          @sydney_adelaide_connected
+          graph.compute(dummy_corp)
+          graph.reachable_hexes(dummy_corp).include?(sydney)
+        end
+
+        def event_com_connected!
+          @sydney_adelaide_connected = true
         end
 
         def place_home_token(entity)
-          return super if entity.name != :COM
-          return unless @sydney_adelaide_connected
+          return super unless entity.name == 'COM'
+          return unless can_com_operate?
           return if entity.tokens.first&.used
 
           # COM places home tokens... regardless as to whether there is space for them
@@ -587,18 +703,21 @@ module Engine
           end
         end
 
+        def can_com_operate?
+          @sydney_adelaide_connected || @com_can_operate
+        end
+
         def crowded_corps
           # 2E does not create a crowded corp
-          @crowded_corps ||= (minors + corporations).select do |c|
-            c.trains.count { |t| !t.obsolete && t.name != '2E' } > train_limit(c)
+          @crowded_corps ||= corporations.select do |c|
+            c.trains.count { |t| t.name != '2E' } > train_limit(c)
           end
         end
 
         def must_buy_train?(entity)
           # 2E does not count as compulsory train purchase
           entity.trains.reject { |t| t.name == '2E' }.empty? &&
-            !depot.depot_trains.empty? &&
-             (self.class::MUST_BUY_TRAIN == :route && @graph.route_info(entity)&.dig(:route_train_purchase))
+            !depot.depot_trains.empty? && @graph.route_info(entity)&.dig(:route_train_purchase)
         end
 
         # for 3 players corp share limit is 70%
@@ -611,7 +730,7 @@ module Engine
         end
 
         def pres_change_ok?(corporation)
-          return false if corporation == @boe
+          corporation != @boe
         end
 
         def after_buy_company(player, company, _price)
@@ -626,6 +745,7 @@ module Engine
               else
                 share_pool.buy_shares(player, share, exchange: :free)
               end
+              ability.use!
             end
           end
         end
@@ -636,8 +756,10 @@ module Engine
           end
         end
 
+        # loans
+
         def maximum_loans(entity)
-          entity == @boe ? 0 : 5
+          entity == @boe ? 20 : 5
         end
 
         def init_loans
@@ -657,6 +779,278 @@ module Engine
           return 100 if corporation == @boe
 
           MARKET_SHARE_LIMIT
+        end
+
+        def can_take_loan?(entity, ebuy: nil)
+          return true if ebuy
+
+          entity.corporation? &&
+            entity.loans.size < maximum_loans(entity) &&
+            !@loans.empty? &&
+            @take_out_loan_triggered
+        end
+
+        def take_loan(entity, loan, ebuy: nil)
+          raise GameError, "Cannot take more than #{maximum_loans(entity)} loans" unless can_take_loan?(entity, ebuy: ebuy)
+
+          old_price = entity.share_price
+          boe_old_price = @boe.share_price
+          @boe.spend(loan.amount, entity)
+          loan_taken_stock_market_movement(entity, loan, ebuy: ebuy)
+          log_share_price(entity, old_price)
+          log_share_price(@boe, boe_old_price)
+          entity.loans << loan
+          @boe.loans << loan
+          @loans.delete(loan)
+        end
+
+        def loan_taken_stock_market_movement(entity, loan, ebuy: nil)
+          @log << "#{entity.name} takes a loan and receives #{format_currency(loan.amount)}"
+          2.times { @stock_market.move_left(entity) }
+          @stock_market.move_left(entity) if ebuy
+          @stock_market.move_right(boe)
+        end
+
+        def perform_ebuy_loans(entity, remaining)
+          ebuy = true
+          while remaining.positive? && entity.share_price.price != 0
+            # if at max loans, company goes directly into receiverhsip
+            if @loans.empty?
+              @log << "There are no more loans available to force buy a train, #{entity.name} goes into receivership"
+              r, _c = entity.share_price.coordinates
+              @stock_market.move(entity, r, 0)
+              break
+            end
+            loan = @loans.first
+            take_loan(entity, loan, ebuy: ebuy)
+            remaining -= loan.amount
+          end
+        end
+
+        # routing logic
+        def visited_stops(route)
+          modified_gauge_changes = get_modified_gauge_distance(route)
+          added_stops = modified_gauge_changes.positive? ? Array.new(modified_gauge_changes) { Engine::Part::City.new('0') } : []
+          route_stops = super
+          route_stops_2e = route_stops.select { |stop| stop.tokened_by?(route.train.owner) || ghan_visited?(stop) }
+          route.train.name == '2E' ? route_stops_2e : route_stops + added_stops
+        end
+
+        def check_distance(route, visits, _train = nil)
+          return super if route.train.name != '2E' || ghan_visited?(visits.first) || ghan_visited?(visits.last)
+
+          raise GameError, 'Route must include Alice Springs'
+        end
+
+        def get_modified_gauge_distance(route)
+          gauge_changes = edge_crossings(route)
+          modifier = route.train.name.include?('+') ? 1 : 0
+          gauge_changes - modifier
+        end
+
+        def edge_crossings(route)
+          sum = route.paths.sum do |path|
+            path.edges.sum do |edge|
+              edge_is_a_border(edge) ? 1 : 0
+            end
+          end
+          # edges are double counted
+          sum / 2
+        end
+
+        def edge_is_a_border(edge)
+          edge.hex.tile.borders.any? { |border| border.edge == edge.num }
+        end
+
+        def revenue_for(route, stops)
+          super + K_BONUS[k_sum(route, stops)]
+        end
+
+        def k_sum(route, stops)
+          return 0 if route.train.name == '2E' || !stops
+
+          stops.count { |rl| rl.hex&.tile&.label&.to_s == 'K' || rl.hex&.tile&.future_label&.label.to_s == 'K' }
+        end
+
+        def revenue_str(route)
+          return super unless k_sum(route, route.stops) > 1
+
+          k_sum_string = ' + k'
+          (k_sum(route, route.stops) - 1).times { k_sum_string += '-k' }
+          super + k_sum_string
+        end
+
+        def compute_stops(route, train = nil)
+          train ||= route.train
+          visits = route.visited_stops
+          distance = train.distance
+          return visits if distance.is_a?(Numeric)
+          return [] if visits.empty?
+
+          # distance is an array of hashes defining how many locations of
+          # each type can be hit. A 2+2 train (4 locations, at most 2 of
+          # which can be cities) looks like this:
+          #   [ { nodes: [ 'town' ],                     pay: 2},
+          #     { nodes: [ 'city', 'town', 'offboard' ], pay: 2} ]
+          # Stops use the first available slot, so for each stop in this case
+          # we'll try to put it in a town slot if possible and then
+          # in a city/town/offboard slot.
+          distance = distance.sort_by { |types, _| types.size }
+
+          max_num_stops = [distance.sum { |h| h['pay'] }, visits.size].min
+
+          max_num_stops.downto(1) do |num_stops|
+            # to_i to work around Opal bug
+            stops, revenue = visits.combination(num_stops.to_i).map do |stops|
+              # Make sure this set of stops is legal
+              # 1) At least one stop must have a token (if enabled)
+              next if train.requires_token && stops.none? { |stop| stop.tokened_by?(route.corporation) }
+
+              # 2) if 2E one stop must be alice springs
+              next if train.name == '2E' && stops.none? { |stop| ghan_visited?(stop) }
+
+              # 3) We can't ask for more revenue centers of a type than are allowed
+              types_used = Array.new(distance.size, 0) # how many slots of each row are filled
+
+              next unless stops.all? do |stop|
+                row = distance.index.with_index do |h, i|
+                  h['nodes'].include?(stop.type) && types_used[i] < h['pay']
+                end
+
+                types_used[row] += 1 if row
+                row
+              end
+
+              [stops, revenue_for(route, stops)]
+            end.compact.max_by(&:last)
+
+            revenue ||= 0
+
+            # We assume that no stop collection with m < n stops could be
+            # better than a stop collection with n stops, so if we found
+            # anything usable with this number of stops we return it
+            # immediately.
+            return stops if revenue.positive?
+          end
+
+          []
+        end
+
+        # recievership
+
+        def close_corporation(corporation, quiet: false)
+          @close_corp_count += 1
+          @player_corp_close_count[corporation.owner] += 1
+
+          # boe gets all the tokens
+          corporation.tokens.each do |token|
+            next unless token.used
+
+            boe_token = Engine::Token.new(@boe)
+            token.swap!(boe_token, check_tokenable: false)
+            @boe.tokens << boe_token
+          end
+
+          # shareholders compensated
+          per_share = corporation.par_price.price
+          payouts = {}
+          @players.each do |player|
+            next if corporation.president?(player)
+
+            amount = player.num_shares_of(corporation) * per_share
+            next if amount.zero?
+
+            payouts[player] = amount
+            corporation.spend(amount, player, check_cash: false, borrow_from: corporation.owner)
+          end
+
+          unless payouts.empty?
+            receivers = payouts
+                          .sort_by { |_r, c| -c }
+                          .map { |receiver, cash| "#{format_currency(cash)} to #{receiver.name}" }.join(', ')
+
+            @log << "#{corporation.name} settles with shareholders "\
+                    "#{format_currency(per_share)} per share (#{receivers})"
+          end
+
+          # cert limit adjustments
+          players_size = @players.size
+          @cert_limit = CERT_LIMIT_RECEIVERSHIP[players_size][@close_corp_count]
+
+          # remove trains on 2nd and 5th company
+          depot.export! if @close_corp_count == 2 || @close_corp_count == 5
+
+          super
+        end
+
+        def custom_end_game_reached?
+          @close_corp_count >= 5
+        end
+
+        def init_cert_limit
+          return super unless @cert_limit.is_a?(Numeric)
+
+          @cert_limit
+        end
+
+        def cert_limit(player = nil)
+          if @cert_limit.is_a?(Numeric) && player
+            # player cert limit needs to be reduced
+            @cert_limit - (@player_corp_close_count[player] * CERT_LIMIT_RECEIVERSHIP_REDUCTION[@players.size])
+          else
+            @cert_limit
+          end
+        end
+
+        def init_train_handler
+          trains = game_trains.flat_map do |train|
+            Array.new((train[:num] || num_trains(train))) do |index|
+              Train.new(**train, index: index)
+            end
+          end
+
+          G1848::Depot.new(trains, self)
+        end
+
+        def ghan_visited?(visited_node)
+          return false unless visited_node
+
+          GHAN_HEXES.include?(visited_node&.hex&.name)
+        end
+
+        def entity_can_use_company?(entity, company)
+          # company abilities only work once they can be bought
+          return false unless can_use_company_ability?
+
+          super
+        end
+
+        def can_use_company_ability?
+          @phase.status.include?('can_buy_companies') || private_closed_triggered
+        end
+
+        def corporation_show_interest?
+          false
+        end
+
+        def ability_used!(company)
+          company.all_abilities.dup.each { |ab| company.remove_ability(ab) }
+        end
+
+        def first_column?(entity)
+          return unless entity.corporation?
+
+          _r, c = entity.share_price.coordinates
+          c == 1
+        end
+
+        def next_round!
+          reset_company_values if @round.is_a?(Engine::Round::Auction)
+          super
+        end
+
+        def reset_company_values
+          companies.each { |comp| comp.value = 0 }
         end
       end
     end

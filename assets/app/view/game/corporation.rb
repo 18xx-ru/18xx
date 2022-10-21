@@ -81,7 +81,10 @@ module View
 
         extras = []
         if @game.corporation_show_loans?(@corporation)
-          extras.concat(render_loans) if @game.total_loans&.nonzero?
+          if @game.total_loans&.nonzero?
+            extras.concat(render_loans)
+            extras.concat(render_interest) if @game.corporation_show_interest?
+          end
           if @corporation.corporation? && @corporation.floated? &&
             @game.total_loans.positive? && @corporation.can_buy?
             extras << render_buying_power
@@ -168,6 +171,11 @@ module View
 
         if @corporation.system?
           logo_props[:attrs][:src] = logo_for_user(@corporation.corporations.last)
+          children << h(:img, logo_props)
+        end
+
+        if @game.second_icon(@corporation)
+          logo_props[:attrs][:src] = logo_for_user(@game.second_icon(@corporation))
           children << h(:img, logo_props)
         end
 
@@ -557,13 +565,7 @@ module View
       end
 
       def render_loans
-        interest_props = { style: {} }
         loan_props = { style: {} }
-        unless @game.can_pay_interest?(@corporation)
-          color = StockMarket::COLOR_MAP[:yellow]
-          interest_props[:style][:backgroundColor] = color
-          interest_props[:style][:color] = contrast_on(color)
-        end
         if @corporation.loans.size > @game.maximum_loans(@corporation)
           color = StockMarket::COLOR_MAP[:red]
           loan_props[:style][:backgroundColor] = color
@@ -576,6 +578,18 @@ module View
             h('td.padded_number', "#{@corporation.loans.size}/"\
                                   "#{@game.maximum_loans(@corporation)}"),
           ]),
+        ]
+      end
+
+      def render_interest
+        interest_props = { style: {} }
+        unless @game.can_pay_interest?(@corporation)
+          color = StockMarket::COLOR_MAP[:yellow]
+          interest_props[:style][:backgroundColor] = color
+          interest_props[:style][:color] = contrast_on(color)
+        end
+
+        [
           h('tr.ipo', interest_props, [
             h('td.right', 'Interest Due'),
             h('td.padded_number', @game.format_currency(@game.interest_owed(@corporation)).to_s),

@@ -163,7 +163,13 @@ module Engine
                     num: 20,
                     available_on: '6',
                     discount: { '4' => 300, '5' => 300, '6' => 300 },
-                    variants: [{ name: 'E', price: 1300 }],
+                    variants: [
+                      {
+                        name: 'E',
+                        price: 1300,
+                        discount: { '4' => 300, '5' => 300, '6' => 300 },
+                      },
+                    ],
                     events: [{ 'type' => 'nationalization' }],
                   }].freeze
 
@@ -463,7 +469,7 @@ module Engine
           end
         end
 
-        def cert_limit
+        def cert_limit(_player = nil)
           current_cert_limit
         end
 
@@ -821,14 +827,6 @@ module Engine
           end
         end
 
-        def upgrades_to?(from, to, _special = false, selected_company: nil)
-          # Handle upgrade to Stockholm gray tile
-          return to.name == '131' if from.color == :brown && from.hex.name == 'G10'
-          return false if to.name == '131'
-
-          super
-        end
-
         def all_potential_upgrades(tile, tile_manifest: false, selected_company: nil)
           upgrades = super
 
@@ -886,7 +884,7 @@ module Engine
           return super unless two_player_variant
 
           @players.reject { |p| bot_player?(p) }
-            .map { |p| [p.name, player_value(p)] }
+            .map { |p| [p.id, player_value(p)] }
             .sort_by { |_, v| v }
             .reverse
             .to_h

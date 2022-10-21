@@ -438,29 +438,8 @@ module Engine
           end
         end
 
-        def setup
-          # Setup the bidding token per player
-          @bidding_token_per_player = init_bidding_token
-
-          # Initialize the player depts, if player have to take an emergency loan
-          @player_debts = Hash.new { |h, k| h[k] = 0 }
-
-          # Randomize and setup the companies
-          setup_companies
-
-          # Initialize the stock round choice for P7
+        def setup_game_specific
           @p7_choice = nil
-
-          # Actual bidbox setup happens in the stock round.
-          @bidbox_minors_cache = []
-
-          # Setup exchange token abilities for all corporations
-          setup_exchange_tokens
-
-          # Setup all the destination tokens, icons and abilities
-          setup_destinations
-
-          # Setup the NdeM
           setup_ndem
         end
 
@@ -762,6 +741,10 @@ module Engine
         end
 
         def finalize_end_game_values; end
+
+        def num_certs_modification(_entity)
+          0
+        end
 
         def reduced_bundle_price_for_market_drop(bundle)
           bundle.share_price = @stock_market.find_share_price(bundle.corporation, [:left] * bundle.num_shares).price
