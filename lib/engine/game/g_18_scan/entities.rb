@@ -13,7 +13,7 @@ module Engine
             desc:
               'Comes with two +20 bonus tokens. '\
               'Tokens may be purchased by a Corporation for K20 to gain a +20 '\
-              'bonus to runs across the ferry on L7. '\
+              'bonus to runs across the ferry on G12. '\
               'Comes with a 10% share of the Valtionraurariet (VR)',
             abilities: [
               { type: 'no_buy' },
@@ -21,7 +21,7 @@ module Engine
               # TODO: Ferry token svg
               {
                 type: 'assign_corporation',
-                when: 'owning_player_token',
+                when: 'owning_player_track',
                 count: 2,
                 owner_type: 'player',
               },
@@ -36,7 +36,7 @@ module Engine
             desc:
               'Comes with one +50 bonus token. '\
               'Token can be purchased by a Corporation for K50 to gain a +50 '\
-              'bonus to one run through Kiruna (A20) hex once per OR. '\
+              'bonus to a run through Kiruna (A20) hex once per OR. '\
               'Comes with a 10% share of the Sveriges & Norges Järnvägar '\
               '(S&NJ)',
             abilities: [
@@ -45,7 +45,7 @@ module Engine
               # TODO: Ore mine token svg
               {
                 type: 'assign_corporation',
-                when: 'owning_player_token',
+                when: 'owning_player_track',
                 count: 1,
                 owner_type: 'player',
               },
