@@ -39,6 +39,11 @@ module Engine
 
         EBUY_DEPOT_TRAIN_MUST_BE_CHEAPEST = false
 
+        ASSIGNMENT_TOKENS = {
+          'Mine' => '/icons/18_scan/mine_token.svg',
+          'Ferry' => '/icons/18_scan/ferry_token.svg',
+        }.freeze
+
         # Custom constants
         SJ_NAME = 'SJ'
 
