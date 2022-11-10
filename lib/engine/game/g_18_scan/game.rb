@@ -46,6 +46,8 @@ module Engine
 
         MINOR_SUBSIDY = 10
 
+        FERRY_HEX = 'G12'
+
         EVENTS_TEXT = Base::EVENTS_TEXT.merge(
           'float_3' => [
             '30% to float',
@@ -306,12 +308,17 @@ module Engine
           route.corporation.assigned?(mine.id) && route.hexes.any? { |h| h.id == 'A20' }
         end
 
+        # Use only first route that includes ore mine
+        def get_mine_bonus(route)
+          mine_included(route) && route == route.routes.find { |r| mine_included(r) }
+        end
+
         def ferry
           @ferry ||= company_by_id('Ferry')
         end
 
         def ferry_included(route)
-          route.corporation.assigned?(ferry.id) && route.hexes.any? { |h| h.id == 'L7' }
+          route.corporation.assigned?(ferry.id) && route.connection_hexes.flatten.include?(FERRY_HEX)
         end
 
         def float_str(entity)
@@ -335,7 +342,7 @@ module Engine
           revenue = super
 
           revenue += 20 if ferry_included(route)
-          revenue += 50 if mine_included(route)
+          revenue += 50 if get_mine_bonus(route)
 
           revenue
         end
@@ -344,7 +351,7 @@ module Engine
           str = super
 
           str += ' + Stockholm-Åbo Ferry' if ferry_included(route)
-          str += ' + Lapland Ore Mine' if mine_included(route)
+          str += ' + Lapland Ore Mine' if get_mine_bonus(route)
 
           str
         end
