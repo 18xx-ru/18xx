@@ -46,6 +46,11 @@ module Engine
 
         MINOR_SUBSIDY = 10
 
+        TOKEN_PRICES = {
+          'Mine' => 50,
+          'Ferry' => 20,
+        }.freeze
+
         FERRY_HEX = 'G12'
 
         EVENTS_TEXT = Base::EVENTS_TEXT.merge(
@@ -280,6 +285,7 @@ module Engine
         def operating_round(round_num)
           Round::Operating.new(self, [
             Engine::Step::Bankrupt,
+            G18Scan::Step::Assign,
             G18Scan::Step::Track,
             # G18Scan::Step::DestinationToken
             # G18Scan::Step::DestinationRun
