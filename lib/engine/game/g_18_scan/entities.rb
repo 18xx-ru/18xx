@@ -117,6 +117,37 @@ module Engine
 
         ].freeze
 
+        REPLACEMENT_COMPANIES = [
+          'Ferry' => {
+            sym: 'Ferry',
+            name: 'Stockholm-Åbo Ferry Company',
+            desc: 'Corporation can purchase this token for K20 to gain a +20 bonus to runs across the ferry on G12.',
+            abilities: [
+              { type: 'no_buy' },
+              {
+                type: 'assign_corporation',
+                when: 'Track',
+                count: 2,
+                owner_type: 'bank',
+              },
+            ],
+          },
+          'Mine' => {
+            sym: 'Mine',
+            name: 'Lapland Ore Line (Token)',
+            desc: 'Corporation can purchase this token for K50 to gain a +50 bonus to a run through Kiruna (A20) once per OR.',
+            abilities: [
+              { type: 'no_buy' },
+              {
+                type: 'assign_corporation',
+                when: 'Track',
+                count: 1,
+                owner_type: 'bank',
+              },
+            ],
+          },
+        ].freeze
+
         MINORS = [
           {
             sym: '1',
@@ -126,19 +157,20 @@ module Engine
             type: 'minor',
             tokens: [0, 40],
             coordinates: 'G4',
-            destination_coordinates: 'B11',
+            destination_coordinates: 'E6',
             color: '#5b74b4',
             abilities: [
               {
-                type: 'train_limit',
-                increase: -2,
-              },
-              {
                 type: 'token',
-                hexes: ['B11'],
+                hexes: ['E6'],
                 cheater: true,
                 price: 0,
                 special_only: true,
+              },
+              {
+                type: 'assign_hexes',
+                hexes: ['E6'],
+                count: 1,
               },
             ],
           },
@@ -155,15 +187,16 @@ module Engine
             color: '#5b74b4',
             abilities: [
               {
-                type: 'train_limit',
-                increase: -2,
-              },
-              {
                 type: 'token',
-                hexes: ['F11'],
+                hexes: ['B11'],
                 cheater: true,
                 price: 0,
                 special_only: true,
+              },
+              {
+                type: 'assign_hexes',
+                hexes: ['B11'],
+                count: 1,
               },
             ],
           },
@@ -180,15 +213,16 @@ module Engine
             color: '#5b74b4',
             abilities: [
               {
-                type: 'train_limit',
-                increase: -2,
-              },
-              {
                 type: 'token',
                 hexes: ['D7'],
                 cheater: true,
                 price: 0,
                 special_only: true,
+              },
+              {
+                type: 'assign_hexes',
+                hexes: ['D7'],
+                count: 1,
               },
             ],
           },

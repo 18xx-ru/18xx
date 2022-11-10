@@ -265,6 +265,20 @@ module Engine
           end
         end
 
+        def init_hexes(companies, corporations)
+          hexes = super
+
+          minors.each do |minor|
+            ability = abilities(minor, :assign_hexes)
+            hex = hexes.find { |h| h.name == ability.hexes.first }
+
+            hex.assign!(minor)
+            ability.description = "Destination: #{hex.location_name} (#{hex.name})"
+          end
+
+          hexes
+        end
+
         def corporation_opts
           two_player? && @optional_rules&.include?(:two_player_share_limit) ? { max_ownership_percent: 70 } : {}
         end
@@ -283,6 +297,7 @@ module Engine
         def stock_round
           Round::Stock.new(self, [
             Engine::Step::DiscardTrain,
+            G18Scan::Step::CompanyPendingPar,
             G18Scan::Step::BuySellParShares,
           ])
         end
@@ -295,12 +310,17 @@ module Engine
             # G18Scan::Step::DestinationToken
             # G18Scan::Step::DestinationRun
             Engine::Step::Token,
-            # G18Scan::Step::BonusToken
             Engine::Step::Route,
             G18Scan::Step::Dividend,
             Engine::Step::DiscardTrain,
             G18Scan::Step::BuyTrain,
           ], round_num: round_num)
+        end
+
+        def assignment_tokens(assignment)
+          return "/icons/#{assignment.logo_filename}" if assignment.is_a?(Engine::Minor)
+
+          super
         end
 
         def ipo_name
@@ -320,7 +340,7 @@ module Engine
         end
 
         # Use only first route that includes ore mine
-        def get_mine_bonus(route)
+        def mine_bonus?(route)
           mine_included(route) && route == route.routes.find { |r| mine_included(r) }
         end
 
@@ -328,8 +348,21 @@ module Engine
           @ferry ||= company_by_id('Ferry')
         end
 
-        def ferry_included(route)
+        def ferry_bonus?(route)
           route.corporation.assigned?(ferry.id) && route.connection_hexes.flatten.include?(FERRY_HEX)
+        end
+
+        def after_buy_company(player, company, price)
+          super
+
+          return unless (minor = minor_by_id(company.sym))
+
+          @log << "Minor #{minor.name} floats"
+
+          minor.owner = player
+          minor.float!
+          place_home_token(minor)
+          bank.spend(price, minor)
         end
 
         def float_str(entity)
@@ -352,8 +385,8 @@ module Engine
         def revenue_for(route, stops)
           revenue = super
 
-          revenue += 20 if ferry_included(route)
-          revenue += 50 if get_mine_bonus(route)
+          revenue += 20 if ferry_bonus?(route)
+          revenue += 50 if mine_bonus?(route)
 
           revenue
         end
@@ -361,8 +394,8 @@ module Engine
         def revenue_str(route)
           str = super
 
-          str += ' + Stockholm-Åbo Ferry' if ferry_included(route)
-          str += ' + Lapland Ore Mine' if get_mine_bonus(route)
+          str += ' + Stockholm-Åbo Ferry' if ferry_bonus?(route)
+          str += ' + Lapland Ore Mine' if mine_bonus?(route)
 
           str
         end
@@ -430,6 +463,21 @@ module Engine
           end
 
           @log << '-- Event: New corporations will be started as full capitalization --'
+        end
+
+        def event_close_companies!
+          # If any companies have unsold tokens, create non-buyable replacements that sell these tokens
+          @token_companies = @companies.map do |c|
+            next unless (ability = abilities(c, :assign_corporation))
+
+            replacement = Company.new(**REPLACEMENT_COMPANIES[c.sym])
+
+            abilities(replacement, assign_corporation).first.count = ability.count
+
+            replacement
+          end.compact
+
+          super
         end
 
         def event_close_minors!

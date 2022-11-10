@@ -9,6 +9,8 @@ module Engine
   players = ('a'..'z')
 
   Engine::GAME_METAS.each do |game_meta|
+    next if game_meta.title != '18Scan'
+
     describe game_meta.title do
       let(:min_players) { players.take(game_meta::PLAYER_RANGE.min) }
       let(:max_players) { players.take(game_meta::PLAYER_RANGE.max) }

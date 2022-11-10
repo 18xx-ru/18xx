@@ -274,6 +274,8 @@ module Engine
 
       def separate_parts
         [@a, @b].each do |part|
+          raise "Path #{a} to #{b} has empty parts" unless part
+
           if part.edge?
             @edges << part
             @exit_lanes[part.num] = @lanes[part == @a ? 0 : 1]

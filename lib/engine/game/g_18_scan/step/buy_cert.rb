@@ -55,15 +55,6 @@ module Engine
 
             @purchased = true
 
-            if (minor = @game.minor_by_id(company.sym))
-              @game.log << "Minor #{minor.name} floats"
-
-              minor.owner = player
-              minor.float!
-              @game.place_home_token(minor)
-              @game.bank.spend(price, minor)
-            end
-
             # end round if all passed on first bid
             all_passed! if @all_passed
           end

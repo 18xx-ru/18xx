@@ -39,6 +39,8 @@ module View
           @mergeable_entity = @step.mergeable_entity if @step.respond_to?(:mergeable_entity)
           @price_protection = @step.price_protection if @step.respond_to?(:price_protection)
           @selected_corporation ||= @price_protection&.corporation
+          @company_pending_par = @step.company_pending_par if @step.respond_to?(:company_pending_par)
+          @selected_corporation ||= @company_pending_par
 
           @bank_first = @step.respond_to?(:bank_first?) && @step.bank_first?
 
@@ -172,6 +174,7 @@ module View
             next if @auctioning_corporation && @auctioning_corporation != corporation
             next if @mergeable_entity && @mergeable_entity != corporation
             next if @price_protection && @price_protection.corporation != corporation
+            next if @company_pending_par && @company_pending_par != corporation
 
             children = []
             children.concat(render_subsidiaries)

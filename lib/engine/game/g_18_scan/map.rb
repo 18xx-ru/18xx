@@ -84,14 +84,13 @@ module Engine
         HEXES = {
           red: {
             ['A4'] => 'city=revenue:yellow_20|green_50|brown_80;path=a:5,b:_0,terminal:1',
-            ['A20'] => 'town=revenue:yellow_10|green_50|brown_10;junction;path=a:0,b:_0;path=a:1,b:_0',
+            ['A20'] => 'town=revenue:yellow_10|green_50|brown_10,loc:center,style:dot;path=a:0,b:_0;path=a:1,b:_0',
             ['F1'] => 'city=revenue:yellow_20|green_30|brown_50;path=a:3,b:_0,terminal:1;path=a:4,b:_0,terminal:1',
             ['G2'] => 'city=revenue:yellow_10|green_30|brown_60;path=a:3,b:_0,terminal:1;path=a:4,b:_0,terminal:1',
             ['H13'] => 'city=revenue:yellow_0|green_30|brown_60;path=a:3,b:_0,terminal:1',
             ['H17'] => 'city=revenue:yellow_30|green_50|brown_80;path=a:2,b:_0,terminal:1',
           },
           yellow: {
-            # TODO: Stockholm
             ['F11'] => 'city=revenue:30,loc:0.5;city=revenue:30,loc:2.5;path=a:1,b:_0;path=a:2,b:_1;border=edge:4,type:impassable,color:blue;label=Y',
           },
           white: {
@@ -102,12 +101,10 @@ module Engine
             ['A18'] => 'city=revenue:30;upgrade=cost:60,terrain:mountain',
             ['B5'] => 'city=revenue:30;border=edge:0,type:impassable,color:blue',
 
-            # TODO: Trondheim
             ['B11'] => 'city=revenue:30;upgrade=cost:60,terrain:mountain',
 
             ['D5'] => 'town=revenue:0;border=edge:0,type:impassable,color:blue;border=edge:5,type:impassable,color:blue',
 
-            # TODO: Oslo
             ['D7'] => 'city=revenue:30;label=Y',
 
             ['D13'] => 'border=edge:5,type:impassable,color:blue',
@@ -121,10 +118,8 @@ module Engine
 
             ['F13'] => 'city=revenue:30;border=edge:1,type:impassable,color:blue;border=edge:2,type:impassable,color:blue',
 
-            # TODO: Malmo
             ['G4'] => 'city=revenue:30;upgrade=cost:40,terrain:water',
 
-            # TODO: Helsinki
             ['G14'] => 'city=revenue:30;label=Y',
           },
           gray: {

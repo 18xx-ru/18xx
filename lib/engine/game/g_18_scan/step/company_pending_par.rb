@@ -15,6 +15,10 @@ module Engine
             # Place home token when DSB floats on SJS private buy in ISR
             @game.place_home_token(corporation) if corporation.floated?
           end
+
+          def ipo_type(_entity)
+            :par
+          end
         end
       end
     end

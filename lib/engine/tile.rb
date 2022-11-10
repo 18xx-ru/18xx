@@ -599,6 +599,8 @@ module Engine
 
     def separate_parts
       @parts.each do |part|
+        raise "Tile #{name} has empty parts" unless part
+
         @blocks_lay ||= part.blocks_lay?
 
         if part.city?
